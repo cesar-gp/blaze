@@ -1,0 +1,8 @@
+megs: 128
+romimage: file=$BXSHARE/BIOS-bochs-latest
+vgaromimage: file=$BXSHARE/VGABIOS-elpin-2.40
+floppya: 1_44=build/os.img, status=inserted
+boot: floppy
+mouse: enabled=0
+magic_break: enabled=1
+display_library: rfb
