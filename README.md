@@ -1,6 +1,6 @@
 # Blaze
 
-Blaze is an Operating System designed for fun by me, César Gutiérrez. It's a work in progress and it will be long a way until I can call it an *operating system* so, by now, let's call it a project.
+Blaze is an Operating System designed for fun by me, César Gutiérrez. It's a work in progress and it will be a long way until I can call it an *operating system* so, by now, let's call it a project.
 
 ## What is Blaze capable of?
 
