@@ -20,6 +20,9 @@ OUT=${DIR_BUILD}/stage1.bin
 
 all: clean ${DIR_BUILD} ${OUT}
 
+clean:
+	rm -rf "${DIR_BUILD}"
+
 # ----------- SOURCE BUILD TARGETS ------------
 
 ${OUT}: ${IN}
@@ -31,6 +34,3 @@ endif
 
 ${DIR_BUILD}:
 	mkdir -p "${DIR_BUILD}"
-
-clean:
-	rm -rf "${DIR_BUILD}"

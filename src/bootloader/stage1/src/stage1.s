@@ -1,6 +1,22 @@
 ;	---------------- CONSTANTS ----------------
 ;
+;	The boot sector is preceeded by 29,75 KiB
+;	of usable memory, starting at 0x0500. The
+;	segment 0x0050 is used to point to that
+;	region of memory.
+;
+;	The stage2 is loaded in that region, with
+;	2 and a half sectors (1280 B) reserved for
+;	its stack. This means it starts at offset
+;	0x500 of the segment 0x0050.
+;
+;	Its 16-bit linear address is 0x0A00.
+;
 ;	See:	NASM301 (p. 38, 3.2.4)
+;			for "equ" pseudo-instruction.
+;
+;			https://wiki.osdev.org/Memory_Map_(x86)
+;			for memory segment documentation.
 ;
 CONST_S1OFF:		equ 0x7C00		; stage1 memory offset.
 CONST_S2SEG:		equ 0x50		; Segment to load stage2 in.
@@ -10,6 +26,7 @@ CONST_ENTRYSIZE:	equ 32			; Directory entry size.
 ;	------------- NASM DIRECTIVES -------------
 ;
 ;	See:	NASM301 (p. 101, 8)
+;			for NASM directives.
 ;
 	bits	16						; 16-bit code.
 	org		CONST_S1OFF				; Organize from offset.
@@ -18,8 +35,8 @@ CONST_ENTRYSIZE:	equ 32			; Directory entry size.
 ;
 ;	IBM-compatible x86 Boot Sector.
 ;
-;	See:	FAT32 (p. 9).
-;			NASM301 (p. 36, 3.2.1)
+;	See:	FAT32 (p. 9, "Boot sector and BPB")
+;			for Boot Sector documentation.
 ;
 BOOT_JMP:
 	jmp		short PROGRAM			; 0x00: First jump (DOS 2.0).
@@ -27,11 +44,12 @@ BOOT_JMP:
 BOOT_OEM:
 	db		"MSWIN4.1"				; 0x03: OEM name (DOS 2.0).
 
-;	---------- BIOS PARAMETER BLOCK -----------
+;	- - - - -  BIOS Parameter Block - - - - - -
 ;
 ;	DOS 3.31 BIOS Parameter Block.
 ;
-;	See:	FAT32 01 (p. 11).
+;	See:	FAT32 01 (p. 11, "Boot sector and BPB").
+;			for BPB documentation.
 ;
 BPB_BYTESPERSEC:
 	dw		512						; 0x0B: Bytes per sector (DOS 2.0).
@@ -58,11 +76,12 @@ BPB_HIDDENSECS:
 BPB_TOTALSECS32:
 	dd		0						; 0x20: Sectors if >= 65536 (DOS 3.31).
 
-;	------ EXTENDED BIOS PARAMETER BLOCK ------
+;	- - -  Extended BIOS Parameter Block  - - -
 ;
 ;	DOS 4.0 Extended BIOS Parameter Block.
 ;
-;	See:	FAT32 01 (p. 13, for FAT12).
+;	See:	FAT32 01 (p. 13, "Boot sector and BPB")
+;			for EBPB documentation.
 ;
 EBPB_DRIVEID:
 	db		0						; 0x24: Zero for 1st media (DOS 4.0).
@@ -77,19 +96,26 @@ EBPB_VOLUMELABEL:
 EBPB_FILESYSTEM:
 	db		"FAT12      "			; 0x36: File system type (DOS 4.0).
 
-;	--------------- BLAZE DATA ----------------
+;	- - - - - - - - Blaze data  - - - - - - - -
 ;
-;	See:	NASM301 (p. 37, 3.2.2).
+;	See:	NASM301 (p. 37, 3.2.2)
+;			for "resw" pseudo-instruction.
 ;
 DAT_ROOTLBA:
 	resw	1						; 0x41: Root directory LBA.
 DAT_ROOTSIZE:
 	resw	1						; 0x43: Root directory sectors.
 
-;	------------ EXPORTED SYMBOLS -------------
+;	- - - - - -  Exported symbols - - - - - - -
 ;
 ;	Redirections to symbols that can be
 ;	called from other programs.
+;
+;	See:	INTEL64IA32 (p. 4074, 32.1)
+;			for real-adress mode and segments.
+;
+;			INTEL64IA32 (p. 1854, 4.3, RET)
+;			for near and far return reference.
 ;
 EXP_DISK_LBATOCHS:
 	call	DISK_LBATOCHS			; 0x45: Export DISK_LBATOCHS.
@@ -107,16 +133,18 @@ EXP_FAT_FILEREAD:
 	call	FAT_FILEREAD			; 0x55: Export FAT_FILEREAD.
 	retf
 
-;	----------------- STRINGS -----------------
+;	- - - - - - - - - Strings - - - - - - - - -
 ;
 ;	See:	NASM301 (p. 40, 3.4.2).
+;			for character string reference.
 ;
 STR_STAGE2:
 	db		"STAGE2  BIN"			; Stage 2 file name.
 
-;	-------------- PROGRAM CODE ---------------
+;	- - - - - - -  Program code - - - - - - - -
 ;
-;	See:	RBIL (INTERRUP.LST, B-1308, INT 13h/AH=08h)
+;	See:	RBIL (INTERRUP.LST, B-1308)
+;			for INT 13h/AH=08h reference.
 ;
 PROGRAM:
 	xor		ax, ax					; Clear all segments.
@@ -217,15 +245,16 @@ PROGRAM_JUMP:
 	jmp		CONST_S2SEG:CONST_S2OFF	; Jump to stage2.
 	jmp		HALT					; Didn't jump? Halt system.
 
-;	--------------- HALT SYSTEM ---------------
+;	- - - - - - - - Halt system - - - - - - - -
 ;
-;	See:	INTEL64IA32 (p. 1139, 3-439)
+;	See:	INTEL64IA32 (p. 1139, V2, 1.3, HLT)
+;			for "hlt" instruction reference.
 ;
 HALT:
 	hlt
 	jmp		HALT
 
-;	------- DISK routines - LBA to CHS --------
+;	- - - - DISK routines - LBA to CHS  - - - -
 ;
 ;	Input:	ax: LBA to convert.
 ;
@@ -233,6 +262,9 @@ HALT:
 ;			cl: [5-0]: sector,
 ;				[7-6]: cylinder bits 9-8.
 ;			dh: Head.
+;
+;	See:	CHSBLOG (entire article)
+;			for a CHS and LBA guide.
 ;
 DISK_LBATOCHS:
 	push	ax						; Save registers.
@@ -268,15 +300,18 @@ DISK_LBATOCHS:
 
 	ret								; Return to caller.
 
-;	------ DISK routines - Read sectors -------
+;	- - -  DISK routines - Read sectors - - - -
 ;
 ;	Input:	ax: LBA.
 ;			bl: Sectors to read.
 ;			dl: Drive ID.
 ;			es:si: Buffer to write to.
 ;
-;	See:	RBIL (INTERRUP.LST, B-1300, INT 13h/AH=00h)
-;			RBIL (INTERRUP.LST, B-1302, INT 13h/AH=02h)
+;	See:	RBIL (INTERRUP.LST, B-1300)
+;			for INT 13h/00h reference.
+;
+;			RBIL (INTERRUP.LST, B-1302)
+;			for INT 13h/02h reference.
 ;
 DISK_READ:
 	pusha							; Save registers.
@@ -310,12 +345,15 @@ DISK_READRET:
 
 	ret								; Return to caller
 
-;	-------- FAT - Get value from FAT ---------
+;	- - - - FAT12 - Get value from FAT  - - - -
 ;
 ;	Input:	ax: FAT index (cluster).
 ;			ds:di: Buffer with FAT loaded.
 ;
 ;	Output:	ax: Value at that FAT index.
+;
+;	See:	FAT32 (p. 17, "FAT Data Structure")
+;			for a detailed explanation.
 ;
 FAT_FATNEXT:
 	push	bx						; Save registers.
@@ -356,11 +394,14 @@ FAT_FATNEXTRET:
 
 	ret								; Return to caller.
 
-;	---------- FAT - Cluster to LBA -----------
+;	- - - - - FAT12 - Cluster to LBA  - - - - -
 ;
 ;	Input:	ax: Cluster
 ;
 ;	Output:	ax: LBA.
+;
+;	See:	FAT32 (p. 17, "FAT Data Structure")
+;			for a detailed explanation.
 ;
 FAT_CLUSTERTOLBA:
 	push	ds						; Save data segment.
@@ -377,7 +418,7 @@ FAT_CLUSTERTOLBA:
 	pop		ds						; Restore data segment.
 	ret								; Return to caller.
 
-;	-------- FAT - Read file to buffer --------
+;	- - - -  FAT - Read file to buffer  - - - -
 ;
 ;	Input:	ax: Cluster of the file.
 ;			dl: Drive ID.
@@ -396,6 +437,9 @@ FAT_CLUSTERTOLBA:
 ;			If the buffer size is less than
 ;			64 KB, check the file size first,
 ;			for memory could be overwritten.
+;
+;	See:	FAT32 (p. 17, "FAT Data Structure")
+;			for a detailed explanation.
 ;
 FAT_FILEREAD:
 	pusha							; Save registers.
@@ -417,9 +461,34 @@ FAT_FILEREADRET:
 	popa							; Restore registers.
 	ret								; Return to caller.
 
-;	------------- ERROR HANDLERS --------------
+;	- - - - - - - Error handlers  - - - - - - -
 ;
-;	See:	RBIL (INTERRUP.LST, V-100E, INT 10h/AH=0Eh)
+;	Output a different character depending on
+;	the entry point that the caller chooses and
+;	then halts the system.
+;
+;	These are the error codes:
+;
+;	-	'A'	(ERR_DRIVEACCESS)
+;			Drive parameters are inaccessible.
+;
+;	-	'I'	(ERR_DRIVEID)
+;			Drive ID is greater than the number
+;			of available disks.
+;
+;	-	'R' (ERR_RESET)
+;			The disk couldn not be reset.
+;
+;	-	'F' (ERR_READFAIL)
+;			Attempted to read a sector of the
+;			disk and failed three times.
+;
+;	-	'N' (ERR_NOSTAGE2)
+;			Stage2.bin file could not be found
+;			on the disk.
+;
+;	See:	RBIL (INTERRUP.LST, V-100E)
+;			for INT 10h/AH=0Eh documentation.
 ;
 ERR:
 	mov		ah, 0x0E				; Set interrupt ID.
@@ -443,18 +512,39 @@ ERR_NOSTAGE2:
 	mov		al, 'N'
 	jmp		ERR
 
-;	------------ SPACE AFTER CODE -------------
+;	- - - - - Padding until 510 bytes - - - - -
 ;
 SPACE_AFTERCODE:
-	times	0x1FE - ($ - $$)	db 0	; Zero bytes until 0x7DFE.
+	times	0x1FE - ($ - $$) db 0	; Zero bytes until 0x7DFE.
 
 ;	------------- BOOT SIGNATURE --------------
+;
+;	See:	UEFI211 (p. 112, 5.2.1)
+;			for MBR partition table and boot
+;			sector documentation.
 ;
 BOOT_SIG:
 	dw		0xAA55					; Boot signature.
 
 ;	--------- BUFFER FOR DISK SECTORS ---------
 ;
+;	The boot sector is followed by 480,5 KiB of
+;	usable memory. This program makes use of a
+;	maximum of 15 sectors (7680 B) from that
+;	region to:
+;
+;	-	Load the root directory and search for
+;		the stage2 binary ("STAGE2  BIN").
+;
+;	-	Load the FAT to search for clusters of
+;		the stage2 binary.
+;
+;	By default, the root directory takes up 15
+;	sectors, and the FAT takes up 9. After the
+;	execution, this memory region can be used
+;	by any other program without risks.
+;
 ;	See:	https://wiki.osdev.org/Memory_Map_(x86)
+;			for memory segment documentation.
 ;
 BUFFER:

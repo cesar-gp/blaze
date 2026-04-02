@@ -23,7 +23,7 @@ IMG=${DIR_BUILD}/os.img
 # pre-installed in most Unix systems.
 
 export ASM=nasm									# NASM 3.0.1 or greater.
-export LD=/opt/i686-elf-gcc/bin/i686-elf-gcc	# GCC cross-compiler for the i686-elf architecture.
+export GCC=/opt/i686-elf-gcc/bin/i686-elf-gcc	# GCC cross-compiler for the i686-elf architecture.
 export MCOPY=mcopy								# Sometimes pre-installed in Unix systems.
 export MKFSFAT=mkfs.fat							# Sometimes pre-installed in Unix systems.
 
@@ -34,11 +34,13 @@ export MKFSFAT=mkfs.fat							# Sometimes pre-installed in Unix systems.
 
 # For target 'qemu'
 
-OPT_QEMU=qemu-system-i386
+OPT_QEMU=qemu-system-i386						# Path to QEMU for the i386 architecture.
+OPT_QEMU_FLAGS=-fda ${IMG}						# QEMU command-line options.
 
 # For target 'bochs'
 
 OPT_BOCHS=bochs									# Bochs with `rfb` display support.
+OPT_BOCHS_FLAGS=-dbg -q -f bochsrc				# Bochs command-line options.
 OPT_GVNCVIEWER=gvncviewer						# Viewer for Bochs VNC display.
 OPT_SLEEP=sleep									# Always installed in Unix systems.
 
@@ -75,10 +77,10 @@ debug: all
 	# Assumes optional dependency 'bochs' using
 	# 'rfb' as its display library.
 	((sleep 1 && ${OPT_GVNCVIEWER} localhost) &>/dev/null) &
-	DIR=${OPT_BOCHS_DIR} ${OPT_BOCHS} -dbg -q -f bochsrc
+	DIR=${OPT_BOCHS_DIR} ${OPT_BOCHS} ${OPT_BOCHS_FLAGS}
 
 qemu: all
-	${OPT_QEMU} -fda ${IMG}
+	${OPT_QEMU} ${OPT_QEMU_FLAGS}
 
 # ----------- SYSTEM BUILD TARGETS ------------
 

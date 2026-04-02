@@ -1,6 +1,6 @@
 # Blaze
 
-Blaze is an Operating System designed for fun by me, César Gutiérrez. It's a work in progress and it will be a long way until I can call it an *operating system* so, by now, let's call it a project.
+Blaze is an operating system designed for fun by me, César Gutiérrez. It's a work in progress and it will be a long way until I can call it a full *operating system* so, by now, let's call it a project.
 
 ## What is Blaze capable of?
 
@@ -16,9 +16,9 @@ There are three main reasons:
 
 ## How do I compile it?
 
-The `Makefile` has a section called *REQUIRED DEPENDENCIES*, all of the programs in that list have to be installed for the program to compile. They should also be in the same place that the variables point to.
+The `Makefile` has a section called *REQUIRED DEPENDENCIES*, all of the programs in that list have to be installed to compile the system. They should also be in the same place that the variables point to.
 
-If you have the programs installed in another directory and you don't want to move them, change the value of the variables. More information about that is provided inside the Makefile.
+If you already have the programs, but they're installed in another directory and you don't want to move them, change the value of the variables. More information about that is provided inside the Makefile.
 
 You can check if any dependency is installed running the value of the variable with the flag `--version`.
 
