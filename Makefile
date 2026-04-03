@@ -22,27 +22,44 @@ IMG=${DIR_BUILD}/os.img
 # compile the operating system. They are
 # pre-installed in most Unix systems.
 
-export ASM=nasm									# NASM 3.0.1 or greater.
-export GCC=/opt/i686-elf-gcc/bin/i686-elf-gcc	# GCC cross-compiler for the i686-elf architecture.
-export MCOPY=mcopy								# Sometimes pre-installed in Unix systems.
-export MKFSFAT=mkfs.fat							# Sometimes pre-installed in Unix systems.
+# NASM 3.0.1 or greater.
+export ASM=nasm
+
+# GCC cross-compiler for the i686-elf architecture.
+export GCC=/opt/i686-elf-gcc/bin/i686-elf-gcc
+
+# Sometimes pre-installed in Unix systems.
+export MCOPY=mcopy
+
+# Sometimes pre-installed in Unix systems.
+export MKFSFAT=mkfs.fat
 
 # ----------- OPTIONAL DEPENDENCIES -----------
 #
 # All optional dependencies (OPT) should be
 # located in the 'tools' directory.
 
-# For target 'qemu'
+# - - - - - - - For target 'qemu' - - - - - - -
 
-OPT_QEMU=qemu-system-i386						# Path to QEMU for the i386 architecture.
-OPT_QEMU_FLAGS=-fda ${IMG}						# QEMU command-line options.
+# Path to QEMU for the i386 architecture.
+OPT_QEMU=qemu-system-i386
 
-# For target 'bochs'
+# QEMU command-line options.						
+OPT_QEMU_FLAGS=-fda ${IMG}
 
-OPT_BOCHS=bochs									# Bochs with `rfb` display support.
-OPT_BOCHS_FLAGS=-dbg -q -f bochsrc				# Bochs command-line options.
-OPT_GVNCVIEWER=gvncviewer						# Viewer for Bochs VNC display.
-OPT_SLEEP=sleep									# Always installed in Unix systems.
+# - - - - - -  For target 'bochs' - - - - - - -
+
+# Bochs with `rfb` display support.
+OPT_BOCHS=bochs
+
+# Bochs command-line options.
+OPT_BOCHS_FLAGS=-dbg -q -f bochsrc
+
+# Viewer for Bochs VNC display.
+OPT_GVNCVIEWER=gvncviewer
+
+# Always installed in Unix systems.
+OPT_SLEEP=sleep
 
 # -------- PATH OF OS BUILD DIRECTORY ---------
 #

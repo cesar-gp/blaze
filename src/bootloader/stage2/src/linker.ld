@@ -2,7 +2,7 @@ ENTRY(PROGRAM16)
 OUTPUT_FORMAT("binary")
 
 SECTIONS {
-	. = 0x00000500; # Relative to segment 0x50.
+	. = 0x00000A00;
 
 	.entry	:	{ LD_ENTRY		= .;	*(.entry)	}
 	.text	:	{ LD_TEXT		= .;	*(.text)	}

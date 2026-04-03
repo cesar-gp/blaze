@@ -1,17 +1,29 @@
 ;	---------------- CONSTANTS ----------------
 ;
-;	See:	RBIL (PORTS.LST, K-P0060006F, "0060  4R-")
+;	See:	RBIL (MEMORY.LST, B-M00000400)
+;			for BIOS data area. IVT descriptor
+;			is placed at its beginning. The two
+;			sectors before contain the table.
+;
+;			RBIL (PORTS.LST, K-P0060006F, "0060  R-")
 ;			for port KBDDATA (0x0060).
 ;
 ;			RBIL (PORTS.LST, K-P0060006F, "0064  RW")
 ;			for port KBDSTATUS (0x0064).
 ;
+;			RBIL (PORTS.LST, P0020003F, "0021  RW")
+;			for port PIC1DATA (0x0021).
+;
+;			RBIL (PORTS.LST, P00A000AF, "00A1  RW")
+;			for port PIC2DATA (0x00A1).
+;
 ;			RBIL (PORTS.LST, K-P0060006F, Table P0401)
 ;			for keyboard commands.
 ;
-CONST_S1SEG:			equ 0			; stage1 memory segment.
-CONST_S2SEG:			equ 0x50		; stage2 memory segment.
-CONST_S2OFF:			equ 0x500		; stage2 memory offset.
+CONST_S2SEG:			equ 0x0000		; stage2 memory segment.
+CONST_S2OFF:			equ 0x0A00		; stage2 memory offset.
+
+CONST_BIOS_IVT:			equ 0x00000400	; BIOS IVT descriptor address.
 
 CONST_BPB_RESERVEDSECS:	equ 0x7C0E		; Pointers to stage1 symbols.
 CONST_EBPB_DRIVEID:		equ 0x7C24
@@ -20,6 +32,8 @@ CONST_MAX_PORTSECONDS:	equ 10			; Max seconds for PORT_WAIT.
 
 CONST_PORT_KBDDATA:		equ 0x0060		; Ports on "See".
 CONST_PORT_KBDSTATUS:	equ 0x0064
+CONST_PORT_PIC1DATA:	equ 0x0021
+CONST_PORT_PIC2DATA:	equ 0x00A1
 
 CONST_CMD_KBDOFF:		equ 0xAD		; Keyboard cmds on "See".
 CONST_CMD_KBDREAD:		equ 0xD0
@@ -33,36 +47,38 @@ CONST_DATA32:			equ 0x0020
 
 ;	------------- NASM DIRECTIVES -------------
 ;
-	extern	main						; Import C functions.
-	extern	LD_BSS						; Import linker symbols.
+	global	PROGRAM16					; Exports for 16-bit symbols.
+	global	HALT32
+	global	VGA_CURMOVE					; Exports for 32-bit symbols.
+	extern	main						; Imports from C.
+	extern	vga_puts
+	extern	vga_clear
+	extern	LD_BSS						; Imports from linker.
 	extern	LD_END
 
 ;	----------- MODE SWITCHING CODE -----------
 ;
-;	See:	INTEL64IA32 (p. 3514, 12.9.1)
+
+;	Macro:	Switch to protected mode.
+;
+;	See:	INTEL64IA32 (p. 3514, V3, 12.9.1)
 ;			for protected mode switching.
 ;
-;			INTEL64IA32 (p. 3515, V3, 12.9.2)
-;			for real-address mode rollback.
-;
-
-;	Macro:	Switch to protected mode and call/jump to symbol.
-;
-;	Input:	%1: destination symbol.
-;			%2:	0 to jump, greater to call.
-;
-%macro		swp 2
+%macro		swp 0
 	bits	16							; Instructions below are 16-bit.
+
+
 
 	push	ax							; Save registers.
 	cli									; Disable interrupts.
-	lgdt	[GDT_DESCRIPTOR] 			; Load Global Descriptor Table.
+
+	lgdt	[GDT.DESCRIPTOR]
 
 	mov		eax, cr0					; Unset PE flag on 'cr0'.
 	or		al, 0x01
 	mov		cr0, eax				
 										; Jump to PMODE32 linear address.
-	jmp		CONST_CODE32:.PMODE32 + CONST_S2SEG * 0x10
+	jmp		CONST_CODE32:.PMODE32
 .PMODE32:
 	bits	32							; Instructions below are 32-bit.
 
@@ -74,51 +90,36 @@ CONST_DATA32:			equ 0x0020
 	mov		fs, ax
 	mov		gs, ax
 
-	sti									; Re-enable interrupts.
-
-	mov		ax, %2						; Check for CALL or JMP.
-	cmp		ax, 0
-	jg		.PMODE32_CALL
-	jmp		%1							; Zero? Jump to symbol.
-.PMODE32_CALL:
+	lidt	[IDT.DESCRIPTOR]			; Load the IDT.
 	pop		ax							; Restore registers.
-	call	%1							; Greater? Call symbol.
+
+	sti									; Re-enable interrupts.
 %endmacro
 
-;	Macro:	switch to protected mode from 16-bit code section.
+;	Macro:	switch to real-address mode.
 ;
-;	The macro includes a 'bits 16' directive at its end
-;	that prevents the code below from compiling as 32-bit.
+;			INTEL64IA32 (p. 3515, V3, 12.9.2)
+;			for real-address mode rollback.
 ;
-;	Input:	Same as 'swp'.
-;
-%macro		swpb 2
-	swp		%1, %2						; Real-jump or call.
-	bits	16							; Instructions below are 16-bit.
-%endmacro
-
-;	Macro:	switch to real-address mode and call/jump to symbol.
-;
-;	Input:	%1:	destination segment.
-;			%2: destination offset.
-;			%3:	0 to jump, greater to call.
-;
-%macro		swr 3
+%macro		swr 0
 	bits	32							; Instructions below are 32-bit.
-	push	eax							; Save registers.
+
+	push	ax							; Save registers.
 	cli									; Disable interrupts.
 										; Jump to protected 16-bit seg.
-	jmp		CONST_CODE16:.PMODE16 + CONST_S2SEG * 0x10
+
+	jmp		CONST_CODE16:.PMODE16
 .PMODE16:
 	bits	16							; Instructions below are 16-bit.
 
 	mov		ax, CONST_DATA16			; Update segments.
+	mov		ss, ax
 	mov		ds, ax
 	mov		es, ax
-	mov		ss, ax
-	mov		ax, 0x0000
 	mov		fs, ax
 	mov		gs, ax
+
+	lidt	[CONST_BIOS_IVT]			; Load BIOS IVT, placed on 0x400.
 
 	mov		eax, cr0					; Unset PE flag in CR0
 	and		al, 0xFE
@@ -129,33 +130,12 @@ CONST_DATA32:			equ 0x0020
 	mov		ax, CONST_S2SEG				; Update segments.
 	mov		ds, ax
 	mov		es, ax
-	mov		ax, 0x0000
 	mov		ss, ax
 	mov		fs, ax
 	mov		gs, ax
+	pop		ax							; Restore registers.
 
 	sti									; Re-enable interrupts.
-
-	mov		ax, %3						; Check for CALL or JMP.
-	cmp		ax, 0
-	jg		.RMODE_CALL
-
-	jmp		%1:%2						; Zero? Jump to symbol.
-.RMODE_CALL:
-	pop		eax							; Restore registers.
-	call	%1:%2						; Greater? Call symbol.
-%endmacro
-
-;	Macro:	switch to real mode from 32-bit code section.
-;
-;	The macro includes a 'bits 32' directive at its end
-;	that prevents the code below from compiling as 16-bit.
-;
-;	Input:	Same as 'swr'.
-;
-%macro		swrb 3
-	swr		%1, %2, %3					; Real-jump or call.
-	bits	32							; Instructions below are 32-bit.
 %endmacro
 
 ;	---------- 16-BIT CODE (ENTRY) ------------
@@ -172,7 +152,7 @@ CONST_DATA32:			equ 0x0020
 ;
 %macro		portwd 0
 	call	PORT_WAIT					; Wait for response.
-	jc		ERR_PORTWAITOUT				; Timeout? Write error message.
+	jc		ERR.PORTWAITOUT				; Timeout? Write error message.
 %endmacro
 
 ;	Macro:	Call 'portwd' defining mask and expected result.
@@ -194,8 +174,8 @@ CONST_DATA32:			equ 0x0020
 ;
 %macro		ltor 1
 	mov		si, %1
-	and		si, 0xFF00
-	shr		si, 4
+	shr		si, 8
+	shl		si, 4
 	mov		es, si
 
 	mov		si, %1
@@ -204,10 +184,25 @@ CONST_DATA32:			equ 0x0020
 
 ;	- - - - - -  16-bit entry code  - - - - - -
 ;
-	global	PROGRAM16					; Export PROGRAM16 to the linker.
-
+;	*pic:	before switching to protected mode,
+;			the 8259 PIC is disabled in favor
+;			of the local APIC. This prevents
+;			misinterpretation of interrupts
+;			later in protected mode.
+;
+;	See:	INTEL64IA32 (p. 3555, V3, 13.4)
+;			for local APIC documentation.
+;
+;			https://wiki.osdev.org/8259_PIC
+;			for information about 8259 PIC.
+;
 PROGRAM16:
-	mov		sp, CONST_S2OFF				; Stack from 0x0a00 downwards.
+	mov		sp, CONST_S2OFF				; Stack from 0x0A00 downwards.
+	mov		bp, sp
+
+	mov		al, 0xFF					; Disable 8259 PIC (*pic).
+	out		CONST_PORT_PIC1DATA, al
+	out		CONST_PORT_PIC2DATA, al
 
 	cli									; Disable interrupts.
 	mov		bx, CONST_MAX_PORTSECONDS	; Set max timeout for port wait.
@@ -237,15 +232,18 @@ PROGRAM16:
 	portwd								; Wait again.
 	mov		al, CONST_CMD_KBDON			; Enable keyboard.
 	out		CONST_PORT_KBDSTATUS, al
-	
+
 	portwd								; Wait again.
-	swpb	PROGRAM32, 0				; Jump to PROGRAM32 in prot. mode.
+	swp									; Switch to protected mode.
+	jmp		PROGRAM32					; Jump to 32-bit entry.
+	
+	bits	16							; Instructions below are 16-bit.
 
 ;	- - - - - - - - Halt system - - - - - - - -
 ;
-HALT:
+HALT16:
 	hlt									; Halt system.
-	jmp		HALT						; Revived? Halt again.
+	jmp		HALT16						; Revived? Halt again.
 
 ;	- - - PRINT 0-terminated ASCII string - - -
 ;
@@ -261,15 +259,15 @@ PRINT:
 
 	mov		ah, 0x0E					; Set interrupt ID.
 	mov		bh, 0						; Write to page zero.
-PRINT_LOOP:
+.REPEAT:
 	lodsb								; al = *(ds:si++)
 	cmp		al, 0						; '\0'? Stop printing.
-	jz		PRINT_RET
+	jz		.RETURN
 
 	int		0x10						; Teletype output.
 
-	jmp	PRINT_LOOP						; Read next byte.
-PRINT_RET:
+	jmp	.REPEAT							; Read next byte.
+.RETURN:
 	pop		si							; Restore registers.
 	pop		bx
 	pop		ax
@@ -290,7 +288,7 @@ SLEEP:
 	mov		dx, 0x4240
 	int		0x15						; Wait for 'cx:dx' ns (1 second).
 
-	jc		ERR_SLEEPINT				; CF set? Error.
+	jc		ERR.SLEEPINT				; CF set? Error.
 
 	pop		cx							; Restore registers.
 	pop		dx
@@ -325,33 +323,33 @@ SLEEP:
 ;
 PORT_WAIT:
 	cmp		si, 1						; Make sure that 'si' is 0 or 1.
-	jg		PORT_WAITOUT
+	jg		.ERROR
 
 	xor		di, di						; Set second counter to zero.
-PORT_WAITLOOP:
+.REPEAT:
 	in		ax, dx						; Read data from port.
 
 	test	ax, cx						; Apply the mask.
-	jz		PORT_WAITEVALZ				; Compare with expected result.
-	jnz		PORT_WAITEVALNZ
-PORT_WAITEVALZ:
+	jz		.EVALZ						; Compare with expected result.
+	jnz		.EVALNZ
+.EVALZ:
 	cmp		si, 0						; Shouldn't apply and doesn't? Return.
-	je		PORT_WAITRET
-	jmp		PORT_WAITKEEP				; Not the case? Keep looping.
-PORT_WAITEVALNZ:
+	je		.RETURN
+	jmp		.SLEEP						; Not the case? Sleep and repeat.
+.EVALNZ:
 	cmp		si, 1						; Should apply and applies? Return.
-	je		PORT_WAITRET
-PORT_WAITKEEP:
+	je		.RETURN
+.SLEEP:
 	cmp		di, bx
-	je		PORT_WAITOUT				; Max seconds passed? Timeout. Stop.
+	je		.ERROR						; Max seconds passed? Timeout. Stop.
 
 	call	SLEEP						; Wait for one second.
 
 	inc		di							; Increment second counter.
-	jmp		PORT_WAITLOOP				; Try again.
-PORT_WAITOUT:
+	jmp		.REPEAT						; Try again.
+.ERROR:
 	stc
-PORT_WAITRET:
+.RETURN:
 	ret
 
 ;	- - - - - - - Error handlers  - - - - - - -
@@ -360,14 +358,21 @@ ERR:
 	call	PRINT						; Print message.
 	mov		si, STR_ERRSUFFIX			; Print suffix
 	call	PRINT
-	jmp		HALT						; Halt the system.
-ERR_PORTWAITOUT:
+	jmp		HALT16						; Halt the system.
+.PREFIX:
+	mov		si, STR_ERRPREFIX
+	call	PRINT
+	ret
+.PORTWAITOUT:
+	call	.PREFIX
 	mov		si, STR_ERRPORTWAITOUT
 	jmp		ERR
-ERR_SLEEPINT:
+.SLEEPINT:
+	call	.PREFIX
 	mov		si, STR_ERRSLEEPINT
 	jmp		ERR
-ERR_RETURN:
+.RETURN:
+	call	.PREFIX
 	mov		si, STR_ERRRETURN
 	jmp		ERR
 
@@ -378,8 +383,6 @@ ERR_RETURN:
 ;	- - - - - -  32-bit code entry  - - - - - -
 ;
 PROGRAM32:
-	add		sp, CONST_S2SEG * 0x10		; Update stack to linear address.
-
 	mov		edi, LD_BSS					; Save pointer to BSS on 'edi'.
 	mov		ecx, LD_END					; Save BSS size on 'ecx'.
 	sub		ecx, edi
@@ -387,32 +390,285 @@ PROGRAM32:
 	cld									; Set direction to "forward" (0).
 	rep		stosb						; Overwrite BSS with zeroes.
 
-	call	main						; Jump to C code.
-	swrb	CONST_S2SEG, ERR_RETURN, 0	; Back? Real-jump to ERR_RETURN.
+	call	main						; Jump to C code. Shouldn't return.
+	swr									; Returned? Switch to real mode.
+	jmp		CONST_S2SEG:ERR.RETURN		; Jump to ERR.RETURN.
+
+	bits	32							; Instructions below are 32-bit.
+
+HALT32:
+	swr
+	jmp		CONST_S2SEG:HALT16
+	bits	32
+
+;	- - - - - -  VGA - Move cursor  - - - - - -
+;
+;	Input:	[bp + 8]: VGA column (x).
+;			[bp + 12]: VGA row (y).
+;
+;	See:	RBIL (INTERRUP.LST, V-1002)
+;			for INT 10h/AH=02h reference.
+;
+;	TODO:	there could be a way to do this
+;			using memory directly without
+;			BIOS interrupts, just like 'putc'.
+;
+VGA_CURMOVE:
+	push	ebp							; Enter call frame.
+	mov		ebp, esp
+
+	swr									; Switch to real mode.
+
+	push	ax							; Save registers.
+	push	bx
+	push	dx
+
+	mov		ah, 0x02					; Set interrupt ID.
+	mov		bh, 0						; Set VGA page (zero).
+	mov		dh, [bp + 12]				; Set VGA row.
+	mov		dl, [bp + 8]				; Set VGA column.
+	int		0x10						; Move cursor.
+
+	pop		dx							; Restore registers.
+	pop		bx
+	pop		ax
+
+	swp									; Switch to protected mode.
+
+	mov		esp, ebp					; Leave call frame.
+	pop		ebp
+
+	ret
+
+EXCEPTION:
+	call	vga_clear					; Clear screen.
+	push	STR_EXCPREFIX
+	call	vga_puts					; Output exception prefix.
+	add		esp, 4						; Discard message.
+	ret
+.DE:
+	call	EXCEPTION
+	push	STR_IDTDE
+	jmp		.SUFFIX
+.DB:
+	call	EXCEPTION
+	push	STR_IDTDB
+	jmp		.SUFFIX
+.02:
+	call	EXCEPTION
+	push	STR_IDT02
+	jmp		.SUFFIX
+.BP:
+	call	EXCEPTION
+	push	STR_IDTBP
+	jmp		.SUFFIX
+.OF:
+	call	EXCEPTION
+	push	STR_IDTOF
+	jmp		.SUFFIX
+.BR:
+	call	EXCEPTION
+	push	STR_IDTBR
+	jmp		.SUFFIX
+.UD:
+	call	EXCEPTION
+	push	STR_IDTUD
+	jmp		.SUFFIX
+.NM:
+	call	EXCEPTION
+	push	STR_IDTNM
+	jmp		.SUFFIX
+.DF:
+	call	EXCEPTION
+	push	STR_IDTDF
+	jmp		.SUFFIX
+.09:
+	call	EXCEPTION
+	push	STR_IDT09
+	jmp		.SUFFIX
+.TS:
+	call	EXCEPTION
+	push	STR_IDTTS
+	jmp		.SUFFIX
+.NP:
+	call	EXCEPTION
+	push	STR_IDTNP
+	jmp		.SUFFIX
+.SS:
+	call	EXCEPTION
+	push	STR_IDTSS
+	jmp		.SUFFIX
+.GP:
+	call	EXCEPTION
+	push	STR_IDTGP
+	jmp		.SUFFIX
+.PF:
+	call	EXCEPTION
+	push	STR_IDTPF
+	jmp		.SUFFIX
+.MF:
+	call	EXCEPTION
+	push	STR_IDTMF
+	jmp		.SUFFIX
+.AC:
+	call	EXCEPTION
+	push	STR_IDTAC
+	jmp		.SUFFIX
+.MC:
+	call	EXCEPTION
+	push	STR_IDTMC
+	jmp		.SUFFIX
+.XM:
+	call	EXCEPTION
+	push	STR_IDTXM
+	jmp		.SUFFIX
+.VE:
+	call	EXCEPTION
+	push	STR_IDTVE
+	jmp		.SUFFIX
+.CP:
+	call	EXCEPTION
+	push	STR_IDTCP
+	jmp		.SUFFIX
+.SUFFIX:
+	call	vga_puts					; Output exception mnemonic.
+	add		esp, 4						; Discard message.
+
+	push	STR_ERRSUFFIX				; Output exception suffix.
+	call	vga_puts
+	add		esp, 4						; Discard message.
+
+	jmp		HALT32						; Halt the system.
 
 ;	------------- RODATA SECTION --------------
 ;
 	section	.rodata
 
+;	- - - - - - - - Data macros - - - - - - - -
+;
+
+;	Macro:	define an interrupt gate for the IDT.
+;
+;	Input:	%1:	handler address.
+;			%2: interrupt/trap gate.
+;
+%macro	idti 1
+	dw		%1							; Handler offset (bits 16-0).
+	dw		CONST_CODE32				; Execution segment.
+	db		0x00						; Always zero.
+	db		10001110b					; Flags: (P, DPL:00, D)
+	dw		0x0000						; Handler offset (bits 32-16).
+%endmacro
+
+;	Macro:	define a trap gate for the IDT.
+;
+;	Input:	%1:	handler address.
+;			%2: interrupt/trap gate.
+;
+%macro	idtt 1
+	dw		%1							; Handler offset (bits 16-0).
+	dw		CONST_CODE32				; Execution segment.
+	db		0x00						; Always zero.
+	db		10001111b					; Flags: (P, DPL:00, D)
+	dw		0x0000						; Handler offset (bits 32-16).
+%endmacro
+
 ;	- - - - - - - - - Strings - - - - - - - - -
 ;
-STR_OK:
-	db		"System booted correctly!", 0x0D, 0x0A, 0
+STR_ERRPREFIX:
+	db		"Error: ", 0
 STR_ERRPORTWAITOUT:
-	db		"Error: timeout while waiting for keyboard port output.", 0x0D, 0x0A, 0
+	db		"keyboard port response timed out", 0
 STR_ERRSLEEPINT:
-	db		"Error: unable to wait for keyboard port output.", 0x0D, 0x0A, 0
+	db		"unable to wait for keyboard port output", 0
 STR_ERRRETURN:
-	db		"Error: system code returned unexpectedly to bootloader.", 0x0D, 0x0A, 0
+	db		"system returned unexpectedly to bootloader", 0
 STR_ERRSUFFIX:
-	db		"Please, reboot your PC.", 0x0D, 0x0A, 0
+	db		'.', 0x0D, 0x0A, "Please, reboot your PC.", 0x0D, 0x0A, 0
+STR_EXCPREFIX:
+	db		"Error: the processor issued an exception on system boot - ", 0
+
+;	- - - - - Interrupt display codes - - - - -
+;
+STR_IDTDE:
+	db		"#DE", 0
+STR_IDTDB:
+	db		"#DB", 0
+STR_IDT02:
+	db		"#02", 0
+STR_IDTBP:
+	db		"#BP", 0
+STR_IDTOF:
+	db		"#OF", 0
+STR_IDTBR:
+	db		"#BR", 0
+STR_IDTUD:
+	db		"#UD", 0
+STR_IDTNM:
+	db		"#NM", 0
+STR_IDTDF:
+	db		"#DF", 0
+STR_IDT09:
+	db		"#09", 0
+STR_IDTTS:
+	db		"#TS", 0
+STR_IDTNP:
+	db		"#NP", 0
+STR_IDTSS:
+	db		"#SS", 0
+STR_IDTGP:
+	db		"#GP", 0
+STR_IDTPF:
+	db		"#PF", 0
+STR_IDTMF:
+	db		"#MF", 0
+STR_IDTAC:
+	db		"#AC", 0
+STR_IDTMC:
+	db		"#MC", 0
+STR_IDTXM:
+	db		"#XM", 0
+STR_IDTVE:
+	db		"#VE", 0
+STR_IDTCP:
+	db		"#CP", 0
+
+IDT:
+	idti	EXCEPTION.DE	; 0x00: #DE (Divide Error).
+	idtt	EXCEPTION.DB	; 0x01: #DB (Debug Exception).
+	idti	EXCEPTION.02	; 0x02: --- (Non-Maskable interrupt).
+	idtt	EXCEPTION.BP	; 0x03: #BP (Breakpoint).
+	idtt	EXCEPTION.OF	; 0x04: #OF (Overflow).
+	idti	EXCEPTION.BR	; 0x05: #BR (BOUND Range Exceeded).
+	idti	EXCEPTION.UD	; 0x06: #UD (Undefined Opcode).
+	idti	EXCEPTION.NM	; 0x07: #NM (Device Not Available).
+	idti	EXCEPTION.DF	; 0x08: #DF (Double Fault).
+	idti	EXCEPTION.09	; 0x09: --- (Coprocessor Segment Overrun).
+	idti	EXCEPTION.TS	; 0x0A: #TS (Invalid TSS).
+	idti	EXCEPTION.NP	; 0x0B: #NP (Segment Not Present).
+	idti	EXCEPTION.SS	; 0x0C: #SS (Stack Segment Fault).
+	idti	EXCEPTION.GP	; 0x0D: #GP (General Protection).
+	idti	EXCEPTION.PF	; 0x0E: #PF (Page Fault).
+	dq		0				; 0x0F: --- (Intel Reserved).
+	idti	EXCEPTION.MF	; 0x10: #MF (Floating-Point Error).
+	idti	EXCEPTION.AC	; 0x11: #AC (Alignment Check).
+	idti	EXCEPTION.MC	; 0x12: #MC (Machine Check).
+	idti	EXCEPTION.XM	; 0x13: #XM (SIMD Floating-Point Exception).
+	idti	EXCEPTION.VE	; 0x14: #VE (Virtualization Exception).
+	idti	EXCEPTION.CP	; 0x15: #CP (Control Protection Exception).
+
+	times 10	dq 0		; 0x16 - 0x1F: Intel reserved.
+	times 0xE0	dq 0		; 0x20 - 0x255: User Defined.
+.DESCRIPTOR:
+	dw	IDT.DESCRIPTOR - IDT - 1
+	dd	IDT
 
 ;	- - - - - Global Descriptor Table - - - - -
 ;
-;	See:	INTEL64IA32 (p. 3230, 3.4.5)
+;	See:	INTEL64IA32 (p. 3230, V3, 3.4.5)
 ;			for segment descriptor structure.
 ;
-;			INTEL64IA32 (p. 3235, 3.5.1)
+;			INTEL64IA32 (p. 3235, V3, 3.5.1)
 ;			for GDT and LDT descriptors.
 ;
 GDT:
@@ -445,6 +701,6 @@ GDT:
 	db		10010011b		; Flags (P, DPL:00, S, t, e, W, A).
 	db		11001111b		; Flags (G, B, l, avl) and limit bits 19-16.
 	db		0x00			; Base bits 31-24.
-GDT_DESCRIPTOR:
-	dw		GDT_DESCRIPTOR - GDT - 1
-	dd		CONST_S2SEG * 0x10 + GDT
+.DESCRIPTOR:
+	dw		GDT.DESCRIPTOR - GDT - 1
+	dd		GDT

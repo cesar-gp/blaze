@@ -2,6 +2,7 @@
 
 DIR_SRC=src
 DIR_BUILD=build
+DIR_INCLUDE=${DIR_SRC}/include
 
 # --------------- DEPENDENCIES ----------------
 
@@ -9,7 +10,7 @@ ASM?=nasm
 ASM_FLAGS=-f elf
 
 GCC?=/opt/i686-elf-gcc/bin/i686-elf-gcc
-GCC_FLAGS=-std=c99 -Wall -Wextra -ffreestanding
+GCC_FLAGS=-std=c99 -Wall -Wextra -ffreestanding -iquote ${DIR_INCLUDE}
 GCC_LINKER=-T "${DIR_SRC}/linker.ld"
 GCC_LIBS=-nostdlib -lgcc
 

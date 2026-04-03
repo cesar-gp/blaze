@@ -1,26 +1,21 @@
 ;	---------------- CONSTANTS ----------------
 ;
 ;	The boot sector is preceeded by 29,75 KiB
-;	of usable memory, starting at 0x0500. The
-;	segment 0x0050 is used to point to that
-;	region of memory.
+;	of usable memory, starting at 0x0500.
 ;
-;	The stage2 is loaded in that region, with
-;	2 and a half sectors (1280 B) reserved for
-;	its stack. This means it starts at offset
-;	0x500 of the segment 0x0050.
-;
-;	Its 16-bit linear address is 0x0A00.
+;	The	first 500 bytes of the region are used
+;	for the stack, the rest (from 0xA00) are
+;	used for stage2 code.
 ;
 ;	See:	NASM301 (p. 38, 3.2.4)
 ;			for "equ" pseudo-instruction.
 ;
 ;			https://wiki.osdev.org/Memory_Map_(x86)
-;			for memory segment documentation.
+;			for memory segments documentation.
 ;
 CONST_S1OFF:		equ 0x7C00		; stage1 memory offset.
-CONST_S2SEG:		equ 0x50		; Segment to load stage2 in.
-CONST_S2OFF:		equ 0x500		; Offset to load stage2 in.
+CONST_S2SEG:		equ 0x0000		; Segment to load stage2 in.
+CONST_S2OFF:		equ 0x0A00		; Offset to load stage2 in.
 CONST_ENTRYSIZE:	equ 32			; Directory entry size.
 
 ;	------------- NASM DIRECTIVES -------------
@@ -106,33 +101,6 @@ DAT_ROOTLBA:
 DAT_ROOTSIZE:
 	resw	1						; 0x43: Root directory sectors.
 
-;	- - - - - -  Exported symbols - - - - - - -
-;
-;	Redirections to symbols that can be
-;	called from other programs.
-;
-;	See:	INTEL64IA32 (p. 4074, 32.1)
-;			for real-adress mode and segments.
-;
-;			INTEL64IA32 (p. 1854, 4.3, RET)
-;			for near and far return reference.
-;
-EXP_DISK_LBATOCHS:
-	call	DISK_LBATOCHS			; 0x45: Export DISK_LBATOCHS.
-	retf
-EXP_DISK_READ:
-	call	DISK_READ				; 0x49: Export DISK_READ.
-	retf
-EXP_FAT_FATNEXT:
-	call	FAT_FATNEXT				; 0x4D: Export FAT_FATNEXT.
-	retf
-EXP_FAT_CLUSTERTOLBA:
-	call	FAT_CLUSTERTOLBA		; 0x51: Export FAT_CLUSTERTOLBA.
-	retf
-EXP_FAT_FILEREAD:
-	call	FAT_FILEREAD			; 0x55: Export FAT_FILEREAD.
-	retf
-
 ;	- - - - - - - - - Strings - - - - - - - - -
 ;
 ;	See:	NASM301 (p. 40, 3.4.2).
@@ -154,8 +122,8 @@ PROGRAM:
 	
 	mov		sp, CONST_S1OFF			; Stack downwards from stage1.
 
-	jmp		0x0000:PROGRAM_MAIN		; Set code segment to zero.
-PROGRAM_MAIN:
+	jmp		0x0000:.MAIN			; Set code segment to zero.
+.MAIN:
 	push	es						; Save segments.
 
 	mov		ah, 0x08				; Set interrupt ID.
@@ -163,12 +131,12 @@ PROGRAM_MAIN:
 	xor		di, di					; Zero 'di' to avoid BIOS bugs.
 	int		0x13					; Get drive parameters.
 
-	pop		es						; Restore segments.
-
-	jc		ERR_DRIVEACCESS			; Carry set? Error.
+	jc		ERR.DRIVEACCESS			; Carry set? Error.
 
 	cmp		dl, [EBPB_DRIVEID]
-	jl		ERR_DRIVEID				; Nº of drives < Drive ID? Error.
+	jl		ERR.DRIVEID				; Nº of drives < Drive ID? Error.
+
+	pop		es						; Restore segments.
 
 	mov		dl, dh					; Retrieve max head from 'dh'.
 	xor		dh, dh					; Cast to word length.
@@ -199,9 +167,9 @@ PROGRAM_MAIN:
 	mov		dl, [EBPB_DRIVEID]
 	mov		si, BUFFER
 	call	DISK_READ
-PROGRAM_SEARCH:
+
 	xor		bx, bx					; Set entry counter to zero.
-PROGRAM_SEARCHLOOP:
+.SEARCH:
 	mov		di, STR_STAGE2			; Point 'di' to stage2 filename.
 	mov		cx, 11					; Set counter to name length.
 	
@@ -209,16 +177,16 @@ PROGRAM_SEARCHLOOP:
 	repe	cmpsb					; memcmp(es:di, ds:si, cx)
 	pop		si
 
-	je		PROGRAM_READ			; Same? Found. Stop searching.
+	je		.FOUND					; Same? Found. Stop searching.
 
 	add		si, CONST_ENTRYSIZE		; Point to next entry.
 	inc		bx						; Increment entry counter.
 
 	cmp		bx, [BPB_ROOTENTRIES]
-	je		ERR_NOSTAGE2			; Nº entry == Entries? Error.
+	je		ERR.NOSTAGE2			; Nº entry == Entries? Error.
 
-	jmp		PROGRAM_SEARCHLOOP		; Read next entry.
-PROGRAM_READ:
+	jmp		.SEARCH					; Read next entry.
+.FOUND:
 	push	[si+0x1A]				; Save stage2 cluster.
 
 	mov		ax, [BPB_RESERVEDSECS]	; Read FAT.
@@ -236,7 +204,6 @@ PROGRAM_READ:
 	pop		ax						; Restore file cluster on 'ax'.
 	call	FAT_FILEREAD			; Read stage2.
 	
-PROGRAM_JUMP:
 	mov		ax, CONST_S2SEG			; Update segments.
 	mov		ds, ax
 	mov		es, ax
@@ -254,25 +221,23 @@ HALT:
 	hlt
 	jmp		HALT
 
-;	- - - - DISK routines - LBA to CHS  - - - -
+;	- - -  DISK routines - Read sectors - - - -
 ;
-;	Input:	ax: LBA to convert.
+;	Input:	ax: LBA.
+;			bl: Sectors to read.
+;			dl: Drive ID.
+;			es:si: Buffer to write to.
 ;
-;	Output:	ch: Cylinder bits 7-0.
-;			cl: [5-0]: sector,
-;				[7-6]: cylinder bits 9-8.
-;			dh: Head.
+;	See:	RBIL (INTERRUP.LST, B-1300)
+;			for INT 13h/00h reference.
 ;
-;	See:	CHSBLOG (entire article)
-;			for a CHS and LBA guide.
+;			RBIL (INTERRUP.LST, B-1302)
+;			for INT 13h/02h reference.
 ;
-DISK_LBATOCHS:
-	push	ax						; Save registers.
-	push	dx
-	push	ds
+DISK_READ:
+	pusha							; Save registers.
 
-	xor		dx, dx					; Make sure data segment is zero.
-	mov		ds, dx
+	push	dx						; Save 'dl' (drive ID).
 
 	xor		dx, dx					; Set remainder to zero.
 	div		word [BPB_SECSPERTRACK]	; Divide LBA and SECSPERTRACK.
@@ -293,54 +258,32 @@ DISK_LBATOCHS:
 	shl		ah, 6					; Isolate bits 1-0 of 'ah'.
 	or		cl, ah					; Save those 2 bits in 'cl'.
 
-	pop		ds						; Restore registers.
-	pop		ax
+	pop		ax						; Restore 'dl' (drive ID).
 	mov		dl, al
-	pop		ax
-
-	ret								; Return to caller.
-
-;	- - -  DISK routines - Read sectors - - - -
-;
-;	Input:	ax: LBA.
-;			bl: Sectors to read.
-;			dl: Drive ID.
-;			es:si: Buffer to write to.
-;
-;	See:	RBIL (INTERRUP.LST, B-1300)
-;			for INT 13h/00h reference.
-;
-;			RBIL (INTERRUP.LST, B-1302)
-;			for INT 13h/02h reference.
-;
-DISK_READ:
-	pusha							; Save registers.
-
-	call	DISK_LBATOCHS			; Set CHS values.
 
 	mov		ah, 0x02				; Set interrupt ID.
 	mov		al, bl					; Read 'bl' sectors.
 	mov		bx, si					; Write to buffer.
 
 	xor		di, di					; Set counter to zero.
-DISK_READLOOP:
+.REPEAT:
 	cmp		di, 3
-	je		ERR_READFAIL			; 3rd attempt finished? Error.
+	je		ERR.READFAIL			; 3rd attempt finished? Error.
 
 	inc		di						; Increment counter.
 	int		0x13					; Read sector(s) into memory.
 
-	jnc		DISK_READRET			; No carry set? Success. Stop reading.
+	jnc		.RETURN					; No carry set? Success. Stop reading.
 
 	pusha							; Save registers.
 	mov		ah, 0x00				; Set interrupt ID.
 	int		0x13					; Reset disk system.
 
-	jc		ERR_RESET				; Carry set? Reset error.
+	jc		ERR.RESET				; Carry set? Reset error.
 	popa							; Restore registers.
 
-	jmp		DISK_READLOOP
-DISK_READRET:
+	jmp		.REPEAT
+.RETURN:
 	popa							; Restore registers.
 
 	ret								; Return to caller
@@ -373,49 +316,25 @@ FAT_FATNEXT:
 	add		di, ax					; Point 'di' to desired index.
 
 	cmp		cx, 0
-	jz		FAT_FATNEXTEVEN			; Split even and odd indexes.
-FAT_FATNEXTODD:
+	jz		.EVEN					; Split even and odd indexes.
+
 	xor		ah, ah					; Clear 'ah'.
 	mov		al, [di + 2]			; Save 3rd byte on 'ah'.
 	shl		ax, 4					; Make space for nibble 0.
 	mov		bl, [di + 1]			; Save 2nd byte on 'bl'.
 	shr		bl, 4					; Isolate nibble 1 and shift it.
 	or		al, bl					; Save that as 3rd nibble on 'al'.
-	jmp		FAT_FATNEXTRET
-FAT_FATNEXTEVEN:
+	jmp		.RETURN
+.EVEN:
 	mov		al, [di]				; Save 1st byte on 'al'
 	mov		ah, [di + 1]			; Save 2nd byte on 'ah'.
 	and		ah, 0x0F				; Isolate 2st nibble of 'ch'.
-FAT_FATNEXTRET:
+.RETURN:
 	pop		di						; Restore registers.
 	pop		dx
 	pop		cx
 	pop		bx
 
-	ret								; Return to caller.
-
-;	- - - - - FAT12 - Cluster to LBA  - - - - -
-;
-;	Input:	ax: Cluster
-;
-;	Output:	ax: LBA.
-;
-;	See:	FAT32 (p. 17, "FAT Data Structure")
-;			for a detailed explanation.
-;
-FAT_CLUSTERTOLBA:
-	push	ds						; Save data segment.
-
-	push	bx						; Make sure data segment is zero.
-	xor		bx, bx
-	mov		ds, bx
-	pop		bx
-
-	sub		ax, 2					; Cluster - 2 = LBA in data section.
-	add		ax, [DAT_ROOTLBA]		; Add LBA of the data section.
-	add		ax, [DAT_ROOTSIZE]		; (rootlba + rootsize).
-
-	pop		ds						; Restore data segment.
 	ret								; Return to caller.
 
 ;	- - - -  FAT - Read file to buffer  - - - -
@@ -444,20 +363,22 @@ FAT_CLUSTERTOLBA:
 FAT_FILEREAD:
 	pusha							; Save registers.
 	mov		bl, 1					; Set sectors to read.
-FAT_FILEREADLOOP:
+.REPEAT:
 	push	ax						; Save file cluster.
-	call	FAT_CLUSTERTOLBA		; Convert cluster to LBA.
+	sub		ax, 2					; Convert cluster to LBA.
+	add		ax, [DAT_ROOTLBA]		; rootlba + rootsize + (cluster - 2).
+	add		ax, [DAT_ROOTSIZE]
 	call	DISK_READ				; Write sector in buffer.
 	pop		ax						; Restore file cluster.
 
 	call	FAT_FATNEXT				; Save next cluster on 'ax'.
 
 	cmp		ax, 0x0FF8				; EOC? Stop reading.
-	jge		FAT_FILEREADRET
+	jge		.RETURN
 
 	add		si, 0x0200				; Advance writing pointer.
-	jmp		FAT_FILEREADLOOP		; Read next sector.
-FAT_FILEREADRET:
+	jmp		.REPEAT					; Read next sector.
+.RETURN:
 	popa							; Restore registers.
 	ret								; Return to caller.
 
@@ -469,21 +390,21 @@ FAT_FILEREADRET:
 ;
 ;	These are the error codes:
 ;
-;	-	'A'	(ERR_DRIVEACCESS)
+;	-	'A'	(ERR.DRIVEACCESS)
 ;			Drive parameters are inaccessible.
 ;
-;	-	'I'	(ERR_DRIVEID)
+;	-	'I'	(ERR.DRIVEID)
 ;			Drive ID is greater than the number
 ;			of available disks.
 ;
-;	-	'R' (ERR_RESET)
+;	-	'R' (ERR.RESET)
 ;			The disk couldn not be reset.
 ;
-;	-	'F' (ERR_READFAIL)
+;	-	'F' (ERR.READFAIL)
 ;			Attempted to read a sector of the
 ;			disk and failed three times.
 ;
-;	-	'N' (ERR_NOSTAGE2)
+;	-	'N' (ERR.NOSTAGE2)
 ;			Stage2.bin file could not be found
 ;			on the disk.
 ;
@@ -496,25 +417,24 @@ ERR:
 	int		0x10					; Teletype output.
 
 	jmp		HALT					; Halt system.
-ERR_DRIVEACCESS:
+.DRIVEACCESS:
 	mov		al, 'A'	
 	jmp		ERR
-ERR_DRIVEID:
+.DRIVEID:
 	mov		al, 'I'
 	jmp		ERR
-ERR_RESET:
+.RESET:
 	mov		al, 'R'
 	jmp		ERR
-ERR_READFAIL:
+.READFAIL:
 	mov		al, 'F'
 	jmp		ERR
-ERR_NOSTAGE2:
+.NOSTAGE2:
 	mov		al, 'N'
 	jmp		ERR
 
 ;	- - - - - Padding until 510 bytes - - - - -
 ;
-SPACE_AFTERCODE:
 	times	0x1FE - ($ - $$) db 0	; Zero bytes until 0x7DFE.
 
 ;	------------- BOOT SIGNATURE --------------
@@ -523,7 +443,6 @@ SPACE_AFTERCODE:
 ;			for MBR partition table and boot
 ;			sector documentation.
 ;
-BOOT_SIG:
 	dw		0xAA55					; Boot signature.
 
 ;	--------- BUFFER FOR DISK SECTORS ---------
