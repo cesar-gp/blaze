@@ -21,12 +21,10 @@
 ;			for keyboard commands.
 ;
 CONST_S2SEG:			equ 0x0000		; stage2 memory segment.
-CONST_S2OFF:			equ 0x0A00		; stage2 memory offset.
+CONST_S2OFF:			equ 0x0500		; stage2 memory offset.
+CONST_STACKOFF:			equ 0xFFFF		; Stack memory offset.
 
 CONST_BIOS_IVT:			equ 0x00000400	; BIOS IVT descriptor address.
-
-CONST_BPB_RESERVEDSECS:	equ 0x7C0E		; Pointers to stage1 symbols.
-CONST_EBPB_DRIVEID:		equ 0x7C24
 
 CONST_MAX_PORTSECONDS:	equ 10			; Max seconds for PORT_WAIT.
 
@@ -43,13 +41,13 @@ CONST_CMD_KBDON:		equ 0xAE
 CONST_CODE16:			equ 0x0008		; GDT segments.
 CONST_DATA16:			equ 0x0010
 CONST_CODE32:			equ 0x0018
-CONST_DATA32:			equ 0x0020	
+CONST_DATA32:			equ 0x0020
+CONST_STACK:			equ 0x0028
 
 ;	------------- NASM DIRECTIVES -------------
 ;
 	global	PROGRAM16					; Exports for 16-bit symbols.
-	global	HALT32
-	global	VGA_CURMOVE					; Exports for 32-bit symbols.
+	global	HALT32						; Exports for 32-bit symbols.
 	extern	main						; Imports from C.
 	extern	vga_puts
 	extern	vga_clear
@@ -67,12 +65,9 @@ CONST_DATA32:			equ 0x0020
 %macro		swp 0
 	bits	16							; Instructions below are 16-bit.
 
-
-
 	push	ax							; Save registers.
 	cli									; Disable interrupts.
-
-	lgdt	[GDT.DESCRIPTOR]
+	lgdt	[GDT.DESCRIPTOR]			; Load the GDT.
 
 	mov		eax, cr0					; Unset PE flag on 'cr0'.
 	or		al, 0x01
@@ -89,6 +84,10 @@ CONST_DATA32:			equ 0x0020
 	mov		ax, 0x0000
 	mov		fs, ax
 	mov		gs, ax
+
+	; TODO, DEBUG:	Stack segment is unused right now.
+	;				May use it on future releases if I
+	;				figure it out.
 
 	lidt	[IDT.DESCRIPTOR]			; Load the IDT.
 	pop		ax							; Restore registers.
@@ -133,6 +132,7 @@ CONST_DATA32:			equ 0x0020
 	mov		ss, ax
 	mov		fs, ax
 	mov		gs, ax
+
 	pop		ax							; Restore registers.
 
 	sti									; Re-enable interrupts.
@@ -167,7 +167,7 @@ CONST_DATA32:			equ 0x0020
 	portwd
 %endmacro
 
-;	Macro:	convert linear address to real-mode address
+;	Macro:	convert linear address to real address
 ;			and save result on 'es:si'.
 ;
 ;	Input:	%1:	Linear memory address.
@@ -197,7 +197,7 @@ CONST_DATA32:			equ 0x0020
 ;			for information about 8259 PIC.
 ;
 PROGRAM16:
-	mov		sp, CONST_S2OFF				; Stack from 0x0A00 downwards.
+	mov		sp, CONST_STACKOFF			; Set stack address.
 	mov		bp, sp
 
 	mov		al, 0xFF					; Disable 8259 PIC (*pic).
@@ -397,48 +397,9 @@ PROGRAM32:
 	bits	32							; Instructions below are 32-bit.
 
 HALT32:
-	swr
-	jmp		CONST_S2SEG:HALT16
-	bits	32
-
-;	- - - - - -  VGA - Move cursor  - - - - - -
-;
-;	Input:	[bp + 8]: VGA column (x).
-;			[bp + 12]: VGA row (y).
-;
-;	See:	RBIL (INTERRUP.LST, V-1002)
-;			for INT 10h/AH=02h reference.
-;
-;	TODO:	there could be a way to do this
-;			using memory directly without
-;			BIOS interrupts, just like 'putc'.
-;
-VGA_CURMOVE:
-	push	ebp							; Enter call frame.
-	mov		ebp, esp
-
-	swr									; Switch to real mode.
-
-	push	ax							; Save registers.
-	push	bx
-	push	dx
-
-	mov		ah, 0x02					; Set interrupt ID.
-	mov		bh, 0						; Set VGA page (zero).
-	mov		dh, [bp + 12]				; Set VGA row.
-	mov		dl, [bp + 8]				; Set VGA column.
-	int		0x10						; Move cursor.
-
-	pop		dx							; Restore registers.
-	pop		bx
-	pop		ax
-
-	swp									; Switch to protected mode.
-
-	mov		esp, ebp					; Leave call frame.
-	pop		ebp
-
-	ret
+	swr									; Switch to real-address mode.
+	jmp		CONST_S2SEG:HALT16			; Halt the system.
+	bits	32							; Instructions below are 32-bit.
 
 EXCEPTION:
 	call	vga_clear					; Clear screen.
@@ -671,6 +632,9 @@ IDT:
 ;			INTEL64IA32 (p. 3235, V3, 3.5.1)
 ;			for GDT and LDT descriptors.
 ;
+;			https://wiki.osdev.org/Memory_Map_(x86)
+;			for available memory regions.
+;
 GDT:
 	dq		0				; First segment is always null.
 							; --------- SEGMENT 1 (16bit CODE) ----------
@@ -700,6 +664,13 @@ GDT:
 	db		0x00			; Base bits 23-16.
 	db		10010011b		; Flags (P, DPL:00, S, t, e, W, A).
 	db		11001111b		; Flags (G, B, l, avl) and limit bits 19-16.
+	db		0x00			; Base bits 31-24.
+							; ----------- SEGMENT 5 (STACK) -------------
+	dw		0x7E00			; Limit.
+	dw		CONST_STACKOFF	; Base bits 15-0.
+	db		0x00			; Base bits 23-16.
+	db		10010111b		; Flags (P, DPL:00, S, t, E, W, A).
+	db		01000000b		; Flags (g, B, l, avl) and limit bits 19-16.
 	db		0x00			; Base bits 31-24.
 .DESCRIPTOR:
 	dw		GDT.DESCRIPTOR - GDT - 1

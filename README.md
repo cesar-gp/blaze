@@ -16,7 +16,7 @@ There are three main reasons:
 
 ## How do I compile it?
 
-The `Makefile` has a section called *REQUIRED DEPENDENCIES*, all of the programs in that list have to be installed to compile the system. They should also be in the same place that the variables point to.
+The Makefile has a section called *REQUIRED DEPENDENCIES*, all of the programs in that list have to be installed to compile the system. They should also be in the same place that the variables point to.
 
 If you already have the programs, but they're installed in another directory and you don't want to move them, change the value of the variables. More information about that is provided inside the Makefile.
 
@@ -24,9 +24,31 @@ You can check if any dependency is installed running the value of the variable w
 
 After everything has been checked, you can open a terminal in the project's root directory and type `make`. When the execution finishes, open the `build` directory and you'll see a disk image with Blaze installed in it.
 
+### Debugging information
+
+Including debugging information on the compile process can be very useful (especially with GDB), but can increase the size of every object file. That's why, by default, debugging information is *not* included.
+
+If you want to include it, execute `make` setting the `DEBUG` variable to `true`. For example:
+
+```bash
+make all DEBUG=true
+```
+
+This variable works with every recipe.
+
+### Parallel compilation
+
+Parallel compilation is supported. You should be able execute `make` in parallel threads using `-j` with no problem at all.
+
+This option is also compatible with the `DEBUG` variable mentioned before, like in this example:
+
+```bash
+make -j 11 all DEBUG=true
+```
+
 ## How do I run it?
 
-The `Makefile` also includes a section called *OPTIONAL DEPENDENCIES*. The programs listed there can be installed to run the targets `qemu` and `debug`.
+The Makefile also includes a section called *OPTIONAL DEPENDENCIES*. The programs listed there can be installed to run the targets `qemu` and `debug`.
 
 - The first (*qemu*) emulates the system using the QEMU version for the `i686-elf` architecture.
 - The second (*debug*) emulates the system using Bochs and its VNC display. The installed version of Bochs must support the display `rfb`.

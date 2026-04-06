@@ -1,11 +1,9 @@
 ;	---------------- CONSTANTS ----------------
 ;
 ;	The boot sector is preceeded by 29,75 KiB
-;	of usable memory, starting at 0x0500.
-;
-;	The	first 500 bytes of the region are used
-;	for the stack, the rest (from 0xA00) are
-;	used for stage2 code.
+;	of usable memory, starting at 0x0500. The
+;	stage2 is loaded at the beginning of that
+;	region.
 ;
 ;	See:	NASM301 (p. 38, 3.2.4)
 ;			for "equ" pseudo-instruction.
@@ -15,7 +13,7 @@
 ;
 CONST_S1OFF:		equ 0x7C00		; stage1 memory offset.
 CONST_S2SEG:		equ 0x0000		; Segment to load stage2 in.
-CONST_S2OFF:		equ 0x0A00		; Offset to load stage2 in.
+CONST_S2OFF:		equ 0x0500		; Offset to load stage2 in.
 CONST_ENTRYSIZE:	equ 32			; Directory entry size.
 
 ;	------------- NASM DIRECTIVES -------------
@@ -24,7 +22,6 @@ CONST_ENTRYSIZE:	equ 32			; Directory entry size.
 ;			for NASM directives.
 ;
 	bits	16						; 16-bit code.
-	org		CONST_S1OFF				; Organize from offset.
 
 ;	--------------- BOOT SECTOR ---------------
 ;
@@ -97,9 +94,9 @@ EBPB_FILESYSTEM:
 ;			for "resw" pseudo-instruction.
 ;
 DAT_ROOTLBA:
-	resw	1						; 0x41: Root directory LBA.
+	dw		0						; 0x41: Root directory LBA.
 DAT_ROOTSIZE:
-	resw	1						; 0x43: Root directory sectors.
+	dw		0						; 0x43: Root directory sectors.
 
 ;	- - - - - - - - - Strings - - - - - - - - -
 ;

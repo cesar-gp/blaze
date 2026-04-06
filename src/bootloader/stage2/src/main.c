@@ -2,11 +2,12 @@
 #include "entry.h"
 #include "vga.h"
 
-void __attribute__((__cdecl__)) main() {
-	// Visual sign that indicates we've been here.
-	vga_clear();
-	vga_puts("System booted correctly!");
-	
-	// Call to 'halt' to make sure we don't return.
+void __attribute__((cdecl)) main() {
+	vga_t* vga = vga_init();
+	vga->color = AB_FGG | AB_FGIF;
+	vga_puts(vga, "[OK] ");
+	vga->color = AB_FGR | AB_FGG | AB_FGB | AB_FGIF;
+	vga_puts(vga, "Bootloader executed!\n\r");
+
 	HALT32();
 }

@@ -1,8 +1,5 @@
-ENTRY(PROGRAM16)
-OUTPUT_FORMAT("binary")
-
 SECTIONS {
-	. = 0x00000A00;
+	. = 0x00000500;
 
 	.entry	:	{ LD_ENTRY		= .;	*(.entry)	}
 	.text	:	{ LD_TEXT		= .;	*(.text)	}

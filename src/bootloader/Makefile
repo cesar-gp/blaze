@@ -11,18 +11,22 @@ TARGETS_CLEAN=$(shell find . -mindepth 1 -maxdepth 1 -type d -printf "clean-%h/%
 
 export OS_BUILD
 
+# -------------- SPECIAL TARGETS --------------
+
+.NOTPARALLEL: all
+
 # ------------- COMPLETE TARGETS --------------
 #
 # Targets that are meant for the user to call,
 # like 'make all' and 'make clean'.
 
-all: ${TARGETS_BUILD}
+all: clean ${TARGETS_BUILD}
 clean: ${TARGETS_CLEAN}
 
 # --------- SUBPROJECT BUILD TARGETS ----------
 
-build-./%:
-	${MAKE} all -C "$*"
+build-./%: %
+	${MAKE} all -C "$<"
 
-clean-./%:
-	${MAKE} clean -C "$*"
+clean-./%: %
+	${MAKE} clean -C "$<"
