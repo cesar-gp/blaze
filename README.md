@@ -61,6 +61,8 @@ That's a good question. I have no experience working with pull requests or GitHu
 
 ## Can I fork it or copy it?
 
-Of course! All of the contents in this repository are licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/). That means you can share and adapt my work as long as you give appropriate credit (read the [deed](https://creativecommons.org/licenses/by/4.0/) in case of doubt).
+Of course! All of the contents in this repository are licensed under the [GNU General Public License 3.0](https://www.gnu.org/licenses/gpl-3.0.en.html). That means you can share and adapt my work as long as you distribute it as [free (libre) software](https://www.gnu.org/philosophy/floss-and-foss.html).
+
+The license applies to all the files included in this repository, unless stated otherwise in the file itself.
 
 The legal text of the license is included in the file named `COPYING`.
