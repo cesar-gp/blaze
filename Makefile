@@ -60,7 +60,11 @@ export MKFSFAT=mkfs.fat
 OPT_QEMU=qemu-system-i386
 
 # QEMU command-line options.
-OPT_QEMU_FLAGS=-s -S -fda ${IMG}
+OPT_QEMU_FLAGS=-fda ${IMG}
+
+ifeq (${DEBUG}, true)
+	OPT_QEMU_FLAGS+= -s -S
+endif
 
 # GDB version 17.1 or greater.
 OPT_GDB=gdb
@@ -86,8 +90,15 @@ OPT_TERMINAL_FLAGS=-e ${OPT_GDB} ${OPT_GDB_FLAGS}
 # Bochs with `rfb` display support.
 OPT_BOCHS=bochs
 
+# Bochs configuration file ('bochsrc')
+OPT_BOCHS_CONFIG=bochsrc
+
 # Bochs command-line options.
-OPT_BOCHS_FLAGS=-dbg -q -f bochsrc
+OPT_BOCHS_FLAGS=-q -f "${OPT_BOCHS_CONFIG}"
+
+ifeq (${DEBUG}, true)
+	OPT_BOCHS_FLAGS+= -dbg
+endif
 
 # VNC Viewer for Bochs RFB display.
 OPT_GVNCVIEWER=gvncviewer
@@ -118,8 +129,12 @@ bochs: all
 	DIR=${OPT_BOCHS_DIR} ${OPT_BOCHS} ${OPT_BOCHS_FLAGS}
 
 qemu: all
+ifeq (${DEBUG}, true)
 	${OPT_TERMINAL} ${OPT_TERMINAL_FLAGS} &
 	${OPT_QEMU} ${OPT_QEMU_FLAGS}
+else
+	${OPT_QEMU} ${OPT_QEMU_FLAGS}
+endif
 
 # ----------- SYSTEM BUILD TARGETS ------------
 

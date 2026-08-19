@@ -38,7 +38,7 @@ This variable works with every recipe.
 
 ### Parallel compilation
 
-Parallel compilation is supported. You should be able execute `make` in parallel threads using `-j` with no problem at all.
+Parallel compilation is supported. You should be able to execute `make` in parallel threads using `-j` with no problem at all.
 
 This option is also compatible with the `DEBUG` variable mentioned before, like in this example:
 
