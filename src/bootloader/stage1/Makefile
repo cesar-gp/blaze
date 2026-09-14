@@ -9,6 +9,7 @@ GCC_LINKERFLAGS:=-T "${DIR_SRC}/linker.ld"
 GCC_LINKERFLAGSFAST:=${GCC_LINKERFLAGS} -Wl,--oformat binary
 
 ifeq (${DEBUG}, true)
+	ASM_FLAGS:=${ASM_FLAGS} -g
 	GCC_FLAGS:=${GCC_FLAGS} -g
 	GCC_LINKERFLAGSDEBUG:=${GCC_LINKERFLAGS} -Wl,--oformat elf32-i386
 endif

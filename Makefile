@@ -1,3 +1,9 @@
+# --------------- CONFIGURATION ---------------
+#
+# Flags that affect the compilation process.
+
+export DEBUG?=false
+
 # ------- PATHS IN OS BUILD DIRECTORIES -------
 #
 # Subprojects like the bootloader will copy
