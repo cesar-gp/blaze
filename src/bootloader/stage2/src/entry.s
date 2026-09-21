@@ -51,8 +51,9 @@ CONST_MEM_VGASTRUCT:	equ 0x10000		; VGA struct address.
 	global	PROGRAM16					; Exports for 16-bit symbols.
 	global	HALT32						; Exports for 32-bit symbols.
 	extern	main						; Imports from C.
-	extern	vga_puts
 	extern	vga_clear
+	extern	vga_move
+	extern	vga_puts
 	extern	LD_BSS						; Imports from linker.
 	extern	LD_END
 
@@ -404,17 +405,16 @@ HALT32:
 	bits	32							; Instructions below are 32-bit.
 
 EXCEPTION:
-	push	STR_EXCPREFIX				; Push exception prefix.
-	push	[CONST_MEM_VGASTRUCT + 4]	; Push VGA struct.
+	push	[CONST_MEM_VGASTRUCT + 4]	; vga_clear(vga);
 	push	[CONST_MEM_VGASTRUCT]
 	call	vga_clear					; Clear screen.
 
-	add		esp, 8						; Change VGA struct for its pointer.
+	add		esp, 8						; Discard VGA struct.
+	push	STR_EXCPREFIX				; vga_puts(&vga, excprefix);
 	push	CONST_MEM_VGASTRUCT
+	call	vga_puts
 
-	call	vga_puts					; Print exception prefix.
-
-	add		esp, 8						; Recover 'ret' position on stack.
+	add		esp, 8						; Recover 'ret' position in stack.
 	ret
 .DE:
 	call	EXCEPTION
@@ -522,13 +522,13 @@ EXCEPTION:
 	push	STR_IDTCP
 	jmp		.SUFFIX
 .SUFFIX:
-	sub		esp, 4						; Return to vga_t* position.
-	call	vga_puts					; Print exception mnemonic.
+	sub		esp, 4						; Return to '&vga' pos. in stack.
+	call	vga_puts					; vga_puts(&vga, mnemonic);
 
 	add		esp, 8						; Discard mnemonic, push suffix.
 	push	STR_ERRSUFFIX
-	sub		esp, 4						; Point esp to vga_t* and print.
-	call	vga_puts
+	sub		esp, 4						; Return  to '&vga' pos. in stack.
+	call	vga_puts					; vga_puts(&vga, suffix);
 
 	jmp		HALT32						; Halt the system.
 

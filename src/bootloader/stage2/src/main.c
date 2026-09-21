@@ -9,7 +9,5 @@ void __attribute__((cdecl)) main() {
 	vga->color = AB_FGR | AB_FGG | AB_FGB | AB_FGIF;
 	vga_puts(vga, "Bootloader executed!\n\r");
 
-	int a = 5 / 0;
-
 	HALT32();
 }
