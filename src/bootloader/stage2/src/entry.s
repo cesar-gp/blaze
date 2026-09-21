@@ -44,6 +44,8 @@ CONST_CODE32:			equ 0x0018
 CONST_DATA32:			equ 0x0020
 CONST_STACK:			equ 0x0028
 
+CONST_MEM_VGASTRUCT:	equ 0x10000		; VGA struct address.
+
 ;	------------- NASM DIRECTIVES -------------
 ;
 	global	PROGRAM16					; Exports for 16-bit symbols.
@@ -402,102 +404,131 @@ HALT32:
 	bits	32							; Instructions below are 32-bit.
 
 EXCEPTION:
+	push	STR_EXCPREFIX				; Push exception prefix.
+	push	[CONST_MEM_VGASTRUCT + 4]	; Push VGA struct.
+	push	[CONST_MEM_VGASTRUCT]
 	call	vga_clear					; Clear screen.
-	push	STR_EXCPREFIX
-	call	vga_puts					; Output exception prefix.
-	add		esp, 4						; Discard message.
+
+	add		esp, 8						; Change VGA struct for its pointer.
+	push	CONST_MEM_VGASTRUCT
+
+	call	vga_puts					; Print exception prefix.
+
+	add		esp, 8						; Recover 'ret' position on stack.
 	ret
 .DE:
 	call	EXCEPTION
+	sub		esp, 4						; Discard prefix, push mnemonic.
 	push	STR_IDTDE
 	jmp		.SUFFIX
 .DB:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTDB
 	jmp		.SUFFIX
 .02:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDT02
 	jmp		.SUFFIX
 .BP:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTBP
 	jmp		.SUFFIX
 .OF:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTOF
 	jmp		.SUFFIX
 .BR:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTBR
 	jmp		.SUFFIX
 .UD:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTUD
 	jmp		.SUFFIX
 .NM:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTNM
 	jmp		.SUFFIX
 .DF:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTDF
 	jmp		.SUFFIX
 .09:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDT09
 	jmp		.SUFFIX
 .TS:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTTS
 	jmp		.SUFFIX
 .NP:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTNP
 	jmp		.SUFFIX
 .SS:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTSS
 	jmp		.SUFFIX
 .GP:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTGP
 	jmp		.SUFFIX
 .PF:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTPF
 	jmp		.SUFFIX
 .MF:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTMF
 	jmp		.SUFFIX
 .AC:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTAC
 	jmp		.SUFFIX
 .MC:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTMC
 	jmp		.SUFFIX
 .XM:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTXM
 	jmp		.SUFFIX
 .VE:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTVE
 	jmp		.SUFFIX
 .CP:
 	call	EXCEPTION
+	sub		esp, 4
 	push	STR_IDTCP
 	jmp		.SUFFIX
 .SUFFIX:
-	call	vga_puts					; Output exception mnemonic.
-	add		esp, 4						; Discard message.
+	sub		esp, 4						; Return to vga_t* position.
+	call	vga_puts					; Print exception mnemonic.
 
-	push	STR_ERRSUFFIX				; Output exception suffix.
+	add		esp, 8						; Discard mnemonic, push suffix.
+	push	STR_ERRSUFFIX
+	sub		esp, 4						; Point esp to vga_t* and print.
 	call	vga_puts
-	add		esp, 4						; Discard message.
 
 	jmp		HALT32						; Halt the system.
 
