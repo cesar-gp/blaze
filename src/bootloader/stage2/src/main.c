@@ -1,6 +1,7 @@
-#include <stdint.h>
 #include "entry.h"
 #include "vga.h"
+
+#include "interrupt.h"
 
 void __attribute__((cdecl)) main() {
 	vga_t* vga = vga_init();

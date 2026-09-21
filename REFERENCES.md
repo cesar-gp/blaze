@@ -12,7 +12,7 @@ This document includes links to every reference manual or external page that is 
 	- Archived: [Wayback Machine](http://web.archive.org/web/20260212005830/https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf).
 - [`NASM301`](https://nasm.us/xdoc/3.01/nasmdoc.pdf): NASM – The Netwide Assembler (version 3.01). \[2025\].
 	- Archived: [Wayback Machine](https://web.archive.org/web/20260312035428/https://nasm.us/xdoc/3.01/nasmdoc.pdf).
-- [`RBIL`](https://www.cs.cmu.edu/~ralf/files.html): Ralf Brown's Interrupt List. All files extracted and *INTERRUP.\** and *PORTS.\** concatenated. \[July 16, 2000\].
+- [`RBIL`](https://www.cs.cmu.edu/~ralf/files.html): Ralf Brown's Interrupt List. Files A to D extracted and *INTERRUP.\** and *PORTS.\** concatenated. \[July 16, 2000\].
 	- Archived: [Wayback Machine](https://web.archive.org/web/20260312160840/https://www.cs.cmu.edu/~ralf/files.html).
 - [`UEFI211`](https://uefi.org/sites/default/files/resources/UEFI_Spec_Final_2.11.pdf): Unified Extensible Firmware Interface (UEFI) Specification, Release 2.11. \[November 21, 2024\].
 	- Archived: [Wayback Machine](https://web.archive.org/web/20260126201802/https://uefi.org/sites/default/files/resources/UEFI_Spec_Final_2.11.pdf).

@@ -24,6 +24,8 @@ CONST_S2SEG:			equ 0x0000		; stage2 memory segment.
 CONST_S2OFF:			equ 0x0500		; stage2 memory offset.
 CONST_STACKOFF:			equ 0xFFFF		; Stack memory offset.
 
+CONST_STACKLIM:			equ 0x7E00		; Stack memory limit 7E00
+
 CONST_BIOS_IVT:			equ 0x00000400	; BIOS IVT descriptor address.
 
 CONST_MAX_PORTSECONDS:	equ 10			; Max seconds for PORT_WAIT.
@@ -52,8 +54,30 @@ CONST_MEM_VGASTRUCT:	equ 0x10000		; VGA struct address.
 	global	HALT32						; Exports for 32-bit symbols.
 	extern	main						; Imports from C.
 	extern	vga_clear
-	extern	vga_move
 	extern	vga_puts
+
+	extern	isr00
+	extern	isr01
+	extern	isr02
+	extern	isr03
+	extern	isr04
+	extern	isr05
+	extern	isr06
+	extern	isr07
+	extern	isr08
+	extern	isr09
+	extern	isr0A
+	extern	isr0B
+	extern	isr0C
+	extern	isr0D
+	extern	isr0E
+	extern	isr10
+	extern	isr11
+	extern	isr12
+	extern	isr13
+	extern	isr14
+	extern	isr15
+
 	extern	LD_BSS						; Imports from linker.
 	extern	LD_END
 
@@ -83,14 +107,11 @@ CONST_MEM_VGASTRUCT:	equ 0x10000		; VGA struct address.
 	mov		ax, CONST_DATA32			; Update segments.
 	mov		ds, ax
 	mov		es, ax
+	mov		ax, CONST_STACK
 	mov		ss, ax
 	mov		ax, 0x0000
 	mov		fs, ax
 	mov		gs, ax
-
-	; TODO, DEBUG:	Stack segment is unused right now.
-	;				May use it on future releases if I
-	;				figure it out.
 
 	lidt	[IDT.DESCRIPTOR]			; Load the IDT.
 	pop		ax							; Restore registers.
@@ -404,134 +425,6 @@ HALT32:
 	jmp		CONST_S2SEG:HALT16			; Halt the system.
 	bits	32							; Instructions below are 32-bit.
 
-EXCEPTION:
-	push	[CONST_MEM_VGASTRUCT + 4]	; vga_clear(vga);
-	push	[CONST_MEM_VGASTRUCT]
-	call	vga_clear					; Clear screen.
-
-	add		esp, 8						; Discard VGA struct.
-	push	STR_EXCPREFIX				; vga_puts(&vga, excprefix);
-	push	CONST_MEM_VGASTRUCT
-	call	vga_puts
-
-	add		esp, 8						; Recover 'ret' position in stack.
-	ret
-.DE:
-	call	EXCEPTION
-	sub		esp, 4						; Discard prefix, push mnemonic.
-	push	STR_IDTDE
-	jmp		.SUFFIX
-.DB:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTDB
-	jmp		.SUFFIX
-.02:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDT02
-	jmp		.SUFFIX
-.BP:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTBP
-	jmp		.SUFFIX
-.OF:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTOF
-	jmp		.SUFFIX
-.BR:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTBR
-	jmp		.SUFFIX
-.UD:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTUD
-	jmp		.SUFFIX
-.NM:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTNM
-	jmp		.SUFFIX
-.DF:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTDF
-	jmp		.SUFFIX
-.09:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDT09
-	jmp		.SUFFIX
-.TS:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTTS
-	jmp		.SUFFIX
-.NP:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTNP
-	jmp		.SUFFIX
-.SS:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTSS
-	jmp		.SUFFIX
-.GP:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTGP
-	jmp		.SUFFIX
-.PF:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTPF
-	jmp		.SUFFIX
-.MF:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTMF
-	jmp		.SUFFIX
-.AC:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTAC
-	jmp		.SUFFIX
-.MC:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTMC
-	jmp		.SUFFIX
-.XM:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTXM
-	jmp		.SUFFIX
-.VE:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTVE
-	jmp		.SUFFIX
-.CP:
-	call	EXCEPTION
-	sub		esp, 4
-	push	STR_IDTCP
-	jmp		.SUFFIX
-.SUFFIX:
-	sub		esp, 4						; Return to '&vga' pos. in stack.
-	call	vga_puts					; vga_puts(&vga, mnemonic);
-
-	add		esp, 8						; Discard mnemonic, push suffix.
-	push	STR_ERRSUFFIX
-	sub		esp, 4						; Return  to '&vga' pos. in stack.
-	call	vga_puts					; vga_puts(&vga, suffix);
-
-	jmp		HALT32						; Halt the system.
-
 ;	------------- RODATA SECTION --------------
 ;
 	section	.rodata
@@ -542,7 +435,6 @@ EXCEPTION:
 ;	Macro:	define an interrupt gate for the IDT.
 ;
 ;	Input:	%1:	handler address.
-;			%2: interrupt/trap gate.
 ;
 %macro	idti 1
 	dw		%1							; Handler offset (bits 16-0).
@@ -555,7 +447,6 @@ EXCEPTION:
 ;	Macro:	define a trap gate for the IDT.
 ;
 ;	Input:	%1:	handler address.
-;			%2: interrupt/trap gate.
 ;
 %macro	idtt 1
 	dw		%1							; Handler offset (bits 16-0).
@@ -580,74 +471,29 @@ STR_ERRSUFFIX:
 STR_EXCPREFIX:
 	db		"Error: the processor issued an exception on system boot - ", 0
 
-;	- - - - - Interrupt display codes - - - - -
-;
-STR_IDTDE:
-	db		"#DE", 0
-STR_IDTDB:
-	db		"#DB", 0
-STR_IDT02:
-	db		"#02", 0
-STR_IDTBP:
-	db		"#BP", 0
-STR_IDTOF:
-	db		"#OF", 0
-STR_IDTBR:
-	db		"#BR", 0
-STR_IDTUD:
-	db		"#UD", 0
-STR_IDTNM:
-	db		"#NM", 0
-STR_IDTDF:
-	db		"#DF", 0
-STR_IDT09:
-	db		"#09", 0
-STR_IDTTS:
-	db		"#TS", 0
-STR_IDTNP:
-	db		"#NP", 0
-STR_IDTSS:
-	db		"#SS", 0
-STR_IDTGP:
-	db		"#GP", 0
-STR_IDTPF:
-	db		"#PF", 0
-STR_IDTMF:
-	db		"#MF", 0
-STR_IDTAC:
-	db		"#AC", 0
-STR_IDTMC:
-	db		"#MC", 0
-STR_IDTXM:
-	db		"#XM", 0
-STR_IDTVE:
-	db		"#VE", 0
-STR_IDTCP:
-	db		"#CP", 0
-
 IDT:
-	idti	EXCEPTION.DE	; 0x00: #DE (Divide Error).
-	idtt	EXCEPTION.DB	; 0x01: #DB (Debug Exception).
-	idti	EXCEPTION.02	; 0x02: --- (Non-Maskable interrupt).
-	idtt	EXCEPTION.BP	; 0x03: #BP (Breakpoint).
-	idtt	EXCEPTION.OF	; 0x04: #OF (Overflow).
-	idti	EXCEPTION.BR	; 0x05: #BR (BOUND Range Exceeded).
-	idti	EXCEPTION.UD	; 0x06: #UD (Undefined Opcode).
-	idti	EXCEPTION.NM	; 0x07: #NM (Device Not Available).
-	idti	EXCEPTION.DF	; 0x08: #DF (Double Fault).
-	idti	EXCEPTION.09	; 0x09: --- (Coprocessor Segment Overrun).
-	idti	EXCEPTION.TS	; 0x0A: #TS (Invalid TSS).
-	idti	EXCEPTION.NP	; 0x0B: #NP (Segment Not Present).
-	idti	EXCEPTION.SS	; 0x0C: #SS (Stack Segment Fault).
-	idti	EXCEPTION.GP	; 0x0D: #GP (General Protection).
-	idti	EXCEPTION.PF	; 0x0E: #PF (Page Fault).
-	dq		0				; 0x0F: --- (Intel Reserved).
-	idti	EXCEPTION.MF	; 0x10: #MF (Floating-Point Error).
-	idti	EXCEPTION.AC	; 0x11: #AC (Alignment Check).
-	idti	EXCEPTION.MC	; 0x12: #MC (Machine Check).
-	idti	EXCEPTION.XM	; 0x13: #XM (SIMD Floating-Point Exception).
-	idti	EXCEPTION.VE	; 0x14: #VE (Virtualization Exception).
-	idti	EXCEPTION.CP	; 0x15: #CP (Control Protection Exception).
+	idti	isr00	; 0x00: #DE (Divide Error).
+	idtt	isr01	; 0x01: #DB (Debug Exception).
+	idti	isr02	; 0x02: --- (Non-Maskable interrupt).
+	idtt	isr03	; 0x03: #BP (Breakpoint).
+	idtt	isr04	; 0x04: #OF (Overflow).
+	idti	isr05	; 0x05: #BR (BOUND Range Exceeded).
+	idti	isr06	; 0x06: #UD (Undefined Opcode).
+	idti	isr07	; 0x07: #NM (Device Not Available).
+	idti	isr08	; 0x08: #DF (Double Fault).
+	idti	isr09	; 0x09: --- (Coprocessor Segment Overrun).
+	idti	isr0A	; 0x0A: #TS (Invalid TSS).
+	idti	isr0B	; 0x0B: #NP (Segment Not Present).
+	idti	isr0C	; 0x0C: #SS (Stack Segment Fault).
+	idti	isr0D	; 0x0D: #GP (General Protection).
+	idti	isr0E	; 0x0E: #PF (Page Fault).
+	dq		2		; 0x0F: --- (Intel Reserved).
+	idti	isr10	; 0x10: #MF (Floating-Point Error).
+	idti	isr11	; 0x11: #AC (Alignment Check).
+	idti	isr12	; 0x12: #MC (Machine Check).
+	idti	isr13	; 0x13: #XM (SIMD Floating-Point Exception).
+	idti	isr14	; 0x14: #VE (Virtualization Exception).
+	idti	isr15	; 0x15: #CP (Control Protection Exception).
 
 	times 10	dq 0		; 0x16 - 0x1F: Intel reserved.
 	times 0xE0	dq 0		; 0x20 - 0x255: User Defined.
@@ -697,7 +543,7 @@ GDT:
 	db		11001111b		; Flags (G, B, l, avl) and limit bits 19-16.
 	db		0x00			; Base bits 31-24.
 							; ----------- SEGMENT 5 (STACK) -------------
-	dw		0x7E00			; Limit.
+	dw		CONST_STACKLIM	; Limit.
 	dw		CONST_STACKOFF	; Base bits 15-0.
 	db		0x00			; Base bits 23-16.
 	db		10010111b		; Flags (P, DPL:00, S, t, E, W, A).

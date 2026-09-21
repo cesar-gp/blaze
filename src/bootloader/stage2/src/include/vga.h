@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 /**
  *	VGA Text Mode 2, 3 defaults.
  * 
